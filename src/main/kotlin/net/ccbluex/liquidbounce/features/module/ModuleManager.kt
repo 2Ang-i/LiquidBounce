@@ -57,6 +57,7 @@ import net.ccbluex.liquidbounce.features.module.modules.combat.elytratarget.Modu
 import net.ccbluex.liquidbounce.features.module.modules.combat.killaura.ModuleKillAura
 import net.ccbluex.liquidbounce.features.module.modules.combat.tpaura.ModuleTpAura
 import net.ccbluex.liquidbounce.features.module.modules.combat.velocity.ModuleVelocity
+import net.ccbluex.liquidbounce.features.module.modules.combat.grimvelocity.ModuleGrimVelocity
 import net.ccbluex.liquidbounce.features.module.modules.exploit.ModuleAbortBreaking
 import net.ccbluex.liquidbounce.features.module.modules.exploit.ModuleAntiHunger
 import net.ccbluex.liquidbounce.features.module.modules.exploit.ModuleAntiReducedDebugInfo
@@ -476,6 +477,7 @@ object ModuleManager : EventListener, Collection<ClientModule> by modules {
             ModuleTimerRange,
             ModuleTickBase,
             ModuleVelocity,
+            ModuleGrimVelocity,
             ModuleBacktrack,
             ModuleSwordBlock,
             ModuleAutoShoot,
