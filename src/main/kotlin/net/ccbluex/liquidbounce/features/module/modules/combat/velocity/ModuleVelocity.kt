@@ -63,7 +63,6 @@ object ModuleVelocity : ClientModule("Velocity", ModuleCategories.COMBAT, aliase
             VelocityJumpReset,
             VelocityLag,
             VelocityReduce,
-
             // Server modes
             VelocityHypixel,
             VelocityDexland,
