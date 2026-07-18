@@ -25,8 +25,9 @@ import net.ccbluex.liquidbounce.event.events.BlinkPacketEvent
 import net.ccbluex.liquidbounce.event.events.GameTickEvent
 import net.ccbluex.liquidbounce.event.events.MovementInputEvent
 import net.ccbluex.liquidbounce.event.events.PacketEvent
-import net.ccbluex.liquidbounce.event.events.TickPacketProcessEvent
+import net.ccbluex.liquidbounce.event.events.RotationUpdateEvent
 import net.ccbluex.liquidbounce.event.events.TransferOrigin
+import net.ccbluex.liquidbounce.event.events.WorldChangeEvent
 import net.ccbluex.liquidbounce.event.handler
 import net.ccbluex.liquidbounce.features.blink.BlinkManager
 import net.ccbluex.liquidbounce.features.module.ClientModule
@@ -36,19 +37,42 @@ import net.ccbluex.liquidbounce.utils.aiming.RotationsValueGroup
 import net.ccbluex.liquidbounce.utils.aiming.data.Rotation
 import net.ccbluex.liquidbounce.utils.aiming.features.MovementCorrection
 import net.ccbluex.liquidbounce.utils.entity.rotation
+import net.ccbluex.liquidbounce.utils.kotlin.EventPriorityConvention.FIRST_PRIORITY
+import net.ccbluex.liquidbounce.utils.kotlin.EventPriorityConvention.READ_FINAL_STATE
 import net.ccbluex.liquidbounce.utils.kotlin.Priority
 import net.ccbluex.liquidbounce.utils.movement.DirectionalInput
 import net.ccbluex.liquidbounce.utils.raytracing.findEntityInCrosshair
 import net.ccbluex.liquidbounce.utils.raytracing.traceFromPlayer
+import net.minecraft.client.gui.screens.LevelLoadingScreen
 import net.minecraft.network.protocol.Packet
+import net.minecraft.network.protocol.common.ClientboundDisconnectPacket
+import net.minecraft.network.protocol.game.ClientboundAddEntityPacket
+import net.minecraft.network.protocol.game.ClientboundEntityEventPacket
+import net.minecraft.network.protocol.game.ClientboundLevelChunkWithLightPacket
+import net.minecraft.network.protocol.game.ClientboundLoginPacket
+import net.minecraft.network.protocol.game.ClientboundMapItemDataPacket
 import net.minecraft.network.protocol.game.ClientboundPlayerPositionPacket
+import net.minecraft.network.protocol.game.ClientboundPlayerInfoUpdatePacket
+import net.minecraft.network.protocol.game.ClientboundRemoveEntitiesPacket
+import net.minecraft.network.protocol.game.ClientboundRespawnPacket
+import net.minecraft.network.protocol.game.ClientboundServerDataPacket
+import net.minecraft.network.protocol.game.ClientboundSetDefaultSpawnPositionPacket
 import net.minecraft.network.protocol.game.ClientboundSetEntityDataPacket
 import net.minecraft.network.protocol.game.ClientboundSetEntityMotionPacket
+import net.minecraft.network.protocol.game.ClientboundSetHealthPacket
+import net.minecraft.network.protocol.game.ClientboundSetPlayerTeamPacket
+import net.minecraft.network.protocol.game.ClientboundSetSubtitleTextPacket
+import net.minecraft.network.protocol.game.ClientboundSetTitleTextPacket
+import net.minecraft.network.protocol.game.ClientboundSoundPacket
+import net.minecraft.network.protocol.game.ClientboundSystemChatPacket
 import net.minecraft.network.protocol.game.ServerboundAttackPacket
+import net.minecraft.network.protocol.game.ServerboundMovePlayerPacket
 import net.minecraft.util.Mth
 import net.minecraft.world.InteractionHand
 import net.minecraft.world.effect.MobEffects
+import net.minecraft.world.entity.LivingEntity
 import net.minecraft.world.entity.player.Player
+import net.minecraft.world.phys.EntityHitResult
 import net.minecraft.world.phys.HitResult
 import kotlin.math.abs
 import kotlin.math.cos
@@ -62,7 +86,10 @@ import kotlin.math.sin
 @Suppress("TooManyFunctions")
 object ModuleGrimVelocity : ClientModule("GrimVelocity", ModuleCategories.COMBAT, aliases = listOf("GrimKB")) {
 
-    private val antiCheat by enumChoice("AntiCheat", AntiCheat.VANILLA).apply(::tagBy)
+    private val antiCheatValue = enumChoice("AntiCheat", AntiCheat.VANILLA)
+        .onChanged { reset(flush = true) }
+        .apply(::tagBy)
+    private val antiCheat by antiCheatValue
 
     private object Vanilla : ValueGroup("Vanilla") {
         val horizontal by float("Horizontal", 0f, 0f..100f, "%")
@@ -75,6 +102,11 @@ object ModuleGrimVelocity : ClientModule("GrimVelocity", ModuleCategories.COMBAT
             val untilSprint by boolean("UntilSprint", false)
             val releaseMode by enumChoice("ReleaseMode", ReleaseMode.RELEASE_ALL)
             val maxTicks by int("MaxLimitedTick", 20, 0..40, "ticks")
+
+            override fun onDisabled() {
+                if (buffering) BlinkManager.flush(TransferOrigin.INCOMING)
+                resetBuffer()
+            }
         }
 
         object JumpReset : ToggleableValueGroup(ModuleGrimVelocity, "JumpReset", false) {
@@ -114,12 +146,17 @@ object ModuleGrimVelocity : ClientModule("GrimVelocity", ModuleCategories.COMBAT
     private var handleJumpReset = false
     private var buffering = false
     private var bufferTicks = -1
-    private var releasePending = false
     private var holdingSprintEntityData = false
+    private var serverOnGround = false
 
     override fun onEnabled() = reset(flush = false)
 
     override fun onDisabled() = reset(flush = true)
+
+    @Suppress("unused")
+    private val worldChangeHandler = handler<WorldChangeEvent> {
+        reset(flush = it.world != null)
+    }
 
     private fun reset(flush: Boolean) {
         if (flush && buffering) BlinkManager.flush(TransferOrigin.INCOMING)
@@ -130,8 +167,8 @@ object ModuleGrimVelocity : ClientModule("GrimVelocity", ModuleCategories.COMBAT
         handleJumpReset = false
         buffering = false
         bufferTicks = -1
-        releasePending = false
         holdingSprintEntityData = false
+        serverOnGround = false
     }
 
     @Suppress("unused")
@@ -154,10 +191,23 @@ object ModuleGrimVelocity : ClientModule("GrimVelocity", ModuleCategories.COMBAT
         }
     }
 
+    @Suppress("unused")
+    private val groundPacketHandler = handler<PacketEvent>(priority = READ_FINAL_STATE) { event ->
+        if (event.origin != TransferOrigin.OUTGOING || event.isCancelled) return@handler
+
+        val packet = event.packet as? ServerboundMovePlayerPacket ?: return@handler
+        serverOnGround = packet.onGround
+    }
+
     private fun applyVanilla(packet: ClientboundSetEntityMotionPacket) {
-        packet.movement.x *= Vanilla.horizontal / 100f
-        packet.movement.y *= Vanilla.vertical / 100f
-        packet.movement.z *= Vanilla.horizontal / 100f
+        packet.movement.x = scaleRawVelocity(packet.movement.x, Vanilla.horizontal)
+        packet.movement.y = scaleRawVelocity(packet.movement.y, Vanilla.vertical)
+        packet.movement.z = scaleRawVelocity(packet.movement.z, Vanilla.horizontal)
+    }
+
+    private fun scaleRawVelocity(velocity: Double, percentage: Float): Double {
+        val rawVelocity = (velocity * VELOCITY_SCALE).roundToInt()
+        return (rawVelocity * percentage / 100f).toInt() / VELOCITY_SCALE
     }
 
     private fun receiveLegitVelocity(packet: ClientboundSetEntityMotionPacket) {
@@ -165,6 +215,8 @@ object ModuleGrimVelocity : ClientModule("GrimVelocity", ModuleCategories.COMBAT
         targetRotation = Rotation.fromRotationVec(-packet.movement.x, 0.0, -packet.movement.z)
 
         if (Legit.Delay.enabled && !cantSprint()) {
+            if (player.tickCount <= 60) return
+
             if (!buffering) {
                 buffering = true
                 bufferTicks = 0
@@ -178,11 +230,14 @@ object ModuleGrimVelocity : ClientModule("GrimVelocity", ModuleCategories.COMBAT
     private val blinkHandler = handler<BlinkPacketEvent> { event ->
         if (antiCheat != AntiCheat.LEGIT || !buffering || event.origin != TransferOrigin.INCOMING) return@handler
 
-        event.action = BlinkManager.Action.QUEUE
+        event.action = when (val packet = event.packet) {
+            null -> BlinkManager.Action.QUEUE
+            else -> if (isEssentialPacket(packet)) BlinkManager.Action.PASS else BlinkManager.Action.QUEUE
+        }
     }
 
     @Suppress("unused")
-    private val tickHandler = handler<GameTickEvent> {
+    private val stateTickHandler = handler<GameTickEvent>(priority = (FIRST_PRIORITY + 1).toShort()) {
         if (antiCheat != AntiCheat.LEGIT) return@handler
 
         if (Legit.Reduce.enabled && Legit.Reduce.attackCountMode == AttackCountMode.CUSTOM) {
@@ -190,7 +245,17 @@ object ModuleGrimVelocity : ClientModule("GrimVelocity", ModuleCategories.COMBAT
         }
         updateVelocityTimer()
         updateDelay()
-        updateJumpResetRotation()
+    }
+
+    @Suppress("unused")
+    private val rotationUpdateHandler = handler<RotationUpdateEvent> {
+        if (antiCheat == AntiCheat.LEGIT) updateJumpResetRotation()
+    }
+
+    @Suppress("unused")
+    private val reduceTickHandler = handler<GameTickEvent> {
+        if (antiCheat != AntiCheat.LEGIT) return@handler
+
         attackReduceTarget()
     }
 
@@ -214,19 +279,11 @@ object ModuleGrimVelocity : ClientModule("GrimVelocity", ModuleCategories.COMBAT
         }
 
         bufferTicks++
-        if (shouldReleaseDelay()) releasePending = true
+        if (shouldReleaseDelay()) releaseDelayedPackets()
     }
 
-    @Suppress("unused")
-    private val packetProcessHandler = handler<TickPacketProcessEvent> {
-        if (!releasePending) return@handler
-
-        buffering = false
-        releasePending = false
-        bufferTicks = -1
-
+    private fun releaseDelayedPackets() {
         if (Legit.Delay.releaseMode == ReleaseMode.ENTITY_DATA_DELAY && flushUntilSprintEntityData()) {
-            buffering = true
             holdingSprintEntityData = true
         } else {
             BlinkManager.flush(TransferOrigin.INCOMING)
@@ -252,12 +309,20 @@ object ModuleGrimVelocity : ClientModule("GrimVelocity", ModuleCategories.COMBAT
         }
 
         val currentRotation = RotationManager.currentRotation ?: player.rotation
-        if (player.onGround()) {
+        if (clientOnGround()) {
             event.jump = true
             handleJumpReset = true
         }
         if (handleJumpReset) {
-            event.directionalInput = movementFor(targetRotation.yaw, currentRotation.yaw, 0f)
+            val movement = movementFor(targetRotation.yaw, currentRotation.yaw, 0f)
+            event.directionalInput = event.directionalInput.copy(
+                forwards = movement.forwards.takeIf { movement.forwards || movement.backwards }
+                    ?: event.directionalInput.forwards,
+                backwards = movement.backwards.takeIf { movement.forwards || movement.backwards }
+                    ?: event.directionalInput.backwards,
+                left = movement.left.takeIf { movement.left || movement.right } ?: event.directionalInput.left,
+                right = movement.right.takeIf { movement.left || movement.right } ?: event.directionalInput.right
+            )
         }
     }
 
@@ -281,10 +346,11 @@ object ModuleGrimVelocity : ClientModule("GrimVelocity", ModuleCategories.COMBAT
         if (!Legit.Reduce.enabled || !handleVelocity || !player.isSprinting) return
 
         val rotation = RotationManager.currentRotation ?: player.rotation
-        val target = raycastPlayer(rotation, Legit.Reduce.attackRange.toDouble())
-            ?: Legit.Reduce.throughWallsRange.takeIf { it > 0f }
-                ?.let { raycastPlayer(rotation, Legit.Reduce.throughWallsRange.toDouble()) }
-            ?: return
+        var hitResult = raycastEntity(rotation, Legit.Reduce.attackRange.toDouble())
+        if (hitResult == null && Legit.Reduce.throughWallsRange > 0f) {
+            hitResult = raycastEntity(rotation, Legit.Reduce.throughWallsRange.toDouble())
+        }
+        val target = hitResult?.entity as? Player ?: return
 
         interaction.ensureHasSentCarriedItem()
         network.send(ServerboundAttackPacket(target.id))
@@ -295,17 +361,17 @@ object ModuleGrimVelocity : ClientModule("GrimVelocity", ModuleCategories.COMBAT
         player.swing(InteractionHand.MAIN_HAND)
     }
 
-    private fun raycastPlayer(rotation: Rotation, range: Double): Player? {
+    private fun raycastEntity(rotation: Rotation, range: Double): EntityHitResult? {
         if (range <= 0.0) return null
 
-        val hit = findEntityInCrosshair(range, rotation)?.takeIf { entityHit ->
+        return player.findEntityInCrosshair(range, rotation) {
+            it != player && !it.isSpectator && it.isPickable
+        }?.takeIf { entityHit ->
             val blockHit = traceFromPlayer(rotation, range)
             blockHit.type == HitResult.Type.MISS ||
                 player.eyePosition.distanceToSqr(entityHit.location) <=
                 player.eyePosition.distanceToSqr(blockHit.location)
-        } ?: return null
-
-        return hit.entity as? Player
+        }
     }
 
     private fun startVelocityHandling() {
@@ -333,8 +399,8 @@ object ModuleGrimVelocity : ClientModule("GrimVelocity", ModuleCategories.COMBAT
         if (bufferTicks >= Legit.Delay.maxTicks || cantSprint()) return true
 
         return when {
-            Legit.Delay.untilLanding && Legit.Delay.untilSprint -> player.onGround() && player.isSprinting
-            Legit.Delay.untilLanding -> player.onGround()
+            Legit.Delay.untilLanding && Legit.Delay.untilSprint -> clientOnGround() && player.isSprinting
+            Legit.Delay.untilLanding -> clientOnGround()
             Legit.Delay.untilSprint -> player.isSprinting
             else -> false
         }
@@ -362,11 +428,32 @@ object ModuleGrimVelocity : ClientModule("GrimVelocity", ModuleCategories.COMBAT
         }
     }
 
+    @Suppress("ComplexCondition")
+    private fun isEssentialPacket(packet: Packet<*>): Boolean {
+        if (mc.gui.screen() is LevelLoadingScreen || player.tickCount <= 60) return true
+
+        if (packet is ClientboundServerDataPacket || packet is ClientboundPlayerInfoUpdatePacket ||
+            packet is ClientboundDisconnectPacket || packet is ClientboundLevelChunkWithLightPacket ||
+            packet is ClientboundLoginPacket || packet is ClientboundMapItemDataPacket ||
+            packet is ClientboundSetDefaultSpawnPositionPacket || packet is ClientboundSystemChatPacket ||
+            packet is ClientboundSetTitleTextPacket || packet is ClientboundSetSubtitleTextPacket ||
+            packet is ClientboundRemoveEntitiesPacket || packet is ClientboundRespawnPacket ||
+            packet is ClientboundSetHealthPacket || packet is ClientboundSoundPacket ||
+            packet is ClientboundSetPlayerTeamPacket || packet is ClientboundAddEntityPacket) {
+            return true
+        }
+
+        return packet is ClientboundEntityEventPacket && packet.eventId == 2.toByte() &&
+            packet.getEntity(world) is LivingEntity
+    }
+
     private fun resetBuffer() {
         buffering = false
         bufferTicks = -1
         holdingSprintEntityData = false
     }
+
+    private fun clientOnGround() = serverOnGround && player.onGround()
 
     private fun movementFor(targetYaw: Float, currentYaw: Float, difference: Float): DirectionalInput {
         var deltaYaw = Mth.wrapDegrees(targetYaw - currentYaw)
@@ -405,4 +492,5 @@ object ModuleGrimVelocity : ClientModule("GrimVelocity", ModuleCategories.COMBAT
 
     private const val ENTITY_FLAGS_INDEX = 0
     private const val SPRINTING_FLAG = 3
+    private const val VELOCITY_SCALE = 8000.0
 }
