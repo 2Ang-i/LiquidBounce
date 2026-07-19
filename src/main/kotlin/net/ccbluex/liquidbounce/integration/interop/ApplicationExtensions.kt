@@ -36,7 +36,16 @@ fun Application.installGson(gson: Gson) =
 
 fun Application.installCors() =
     install(CORS) {
+
         allowOrigins(::isLocalOrigin)
+
+        allowOrigins { origin ->
+            runCatching {
+                val uri = java.net.URI(origin)
+                uri.scheme in setOf("http", "https") && uri.host in setOf("localhost", "127.0.0.1")
+            }.getOrDefault(false)
+        }
+
         anyMethod()
         allowHeader(HttpHeaders.Authorization)
         allowHeader(HttpHeaders.ContentLength)

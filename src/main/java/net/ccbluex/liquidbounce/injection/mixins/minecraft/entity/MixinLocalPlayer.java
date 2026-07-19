@@ -83,6 +83,9 @@ public abstract class MixinLocalPlayer extends MixinPlayer implements LocalPlaye
     public ClientPacketListener connection;
 
     @Shadow
+    private int positionReminder;
+
+    @Shadow
     public abstract boolean isUnderWater();
 
     @Unique
@@ -158,6 +161,10 @@ public abstract class MixinLocalPlayer extends MixinPlayer implements LocalPlaye
         if (eventMotion.isCancelled()) {
             callbackInfo.cancel();
         }
+
+        if (eventMotion.getResetPositionReminder()) {
+            this.positionReminder = 0;
+        }
     }
 
     @ModifyExpressionValue(method = "sendPosition", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/player/LocalPlayer;getX()D"))
@@ -186,7 +193,11 @@ public abstract class MixinLocalPlayer extends MixinPlayer implements LocalPlaye
     @Inject(method = "sendPosition", at = @At("RETURN"))
     private void hookMovementPost(CallbackInfo callbackInfo) {
         LocalPlayer player = (LocalPlayer) (Object) this;
-        EventManager.INSTANCE.callEvent(new PlayerNetworkMovementTickEvent(EventState.POST, player.getX(), player.getY(), player.getZ(), player.onGround()));
+        var event = new PlayerNetworkMovementTickEvent(EventState.POST, player.getX(), player.getY(), player.getZ(), player.onGround());
+        EventManager.INSTANCE.callEvent(event);
+        if (event.getResetPositionReminder()) {
+            this.positionReminder = 0;
+        }
     }
 
     /**

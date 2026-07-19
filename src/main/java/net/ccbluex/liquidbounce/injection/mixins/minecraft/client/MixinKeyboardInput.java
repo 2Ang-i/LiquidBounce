@@ -79,6 +79,14 @@ public abstract class MixinKeyboardInput extends MixinClientInput {
 
         var event = new MovementInputEvent(new DirectionalInput(original), original.jump(), original.shift());
         EventManager.INSTANCE.callEvent(event);
+
+        if (event.isCancelled()) {
+            this.options.keySprint.setDown(false);
+            var emptyInput = new Input(false, false, false, false, false, false, false);
+            this.untransformed = emptyInput;
+            return emptyInput;
+        }
+
         var untransformedDirectionalInput = event.getDirectionalInput();
         var directionalInput = transformDirection(untransformedDirectionalInput);
 

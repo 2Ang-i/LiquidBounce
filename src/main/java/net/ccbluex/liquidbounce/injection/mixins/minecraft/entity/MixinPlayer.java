@@ -32,6 +32,7 @@ import net.ccbluex.liquidbounce.features.module.modules.exploit.ModuleAntiReduce
 import net.ccbluex.liquidbounce.features.module.modules.movement.ModuleNoClip;
 import net.ccbluex.liquidbounce.features.module.modules.movement.ModuleSprint;
 import net.ccbluex.liquidbounce.features.module.modules.player.ModuleReach;
+import net.ccbluex.liquidbounce.features.module.modules.player.ModuleStuck;
 import net.ccbluex.liquidbounce.features.module.modules.player.nofall.modes.NoFallNoGround;
 import net.ccbluex.liquidbounce.features.module.modules.render.hitfx.ModuleHitFX;
 import net.ccbluex.liquidbounce.features.module.modules.world.ModuleNoSlowBreak;
@@ -43,6 +44,7 @@ import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.phys.Vec3;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
@@ -55,6 +57,13 @@ import org.spongepowered.asm.mixin.injection.invoke.arg.Args;
 
 @Mixin(Player.class)
 public abstract class MixinPlayer extends MixinLivingEntity {
+
+    @Inject(method = "travel", at = @At("HEAD"), cancellable = true)
+    private void hookStuckTravel(Vec3 movementInput, CallbackInfo callbackInfo) {
+        if (liquid_bounce$isClientPlayer() && ModuleStuck.INSTANCE.getRunning()) {
+            callbackInfo.cancel();
+        }
+    }
 
     @Shadow
     public abstract void tick();

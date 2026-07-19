@@ -176,6 +176,7 @@ import net.ccbluex.liquidbounce.features.module.modules.player.ModulePotionSpoof
 import net.ccbluex.liquidbounce.features.module.modules.player.ModuleReach
 import net.ccbluex.liquidbounce.features.module.modules.player.ModuleReplenish
 import net.ccbluex.liquidbounce.features.module.modules.player.ModuleSmartEat
+import net.ccbluex.liquidbounce.features.module.modules.player.ModuleStuck
 import net.ccbluex.liquidbounce.features.module.modules.player.antivoid.ModuleAntiVoid
 import net.ccbluex.liquidbounce.features.module.modules.player.autobuff.ModuleAutoBuff
 import net.ccbluex.liquidbounce.features.module.modules.player.ModuleAutoCrafter
@@ -621,6 +622,7 @@ object ModuleManager : EventListener, Collection<ClientModule> by modules {
             ModuleReach,
             ModuleAutoQueue,
             ModuleSmartEat,
+            ModuleStuck,
             ModuleReplenish,
             ModulePotionSpoof,
 

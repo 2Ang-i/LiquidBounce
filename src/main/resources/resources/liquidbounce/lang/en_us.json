@@ -574,6 +574,7 @@
   "liquidbounce.module.smoothCamera.description": "Makes your camera move smoother.",
   "liquidbounce.module.freeLook.description": "Allows you to move the camera freely around your character.",
   "liquidbounce.module.freeze.description": "Allows you to freeze yourself in your current position without the server knowing.",
+  "liquidbounce.module.stuck.description": "Freezes your position to prevent movement.",
   "liquidbounce.module.freeze.messages.disabledOnFlag": "Module disabled due to flag.",
   "liquidbounce.module.middleClickAction.messages.addedFriend": "%s was successfully added to the friends list.",
   "liquidbounce.module.middleClickAction.description": "Allows you to perform actions with middle clicks.",

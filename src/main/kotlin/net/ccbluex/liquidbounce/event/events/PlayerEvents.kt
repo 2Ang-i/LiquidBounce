@@ -49,12 +49,13 @@ object PlayerPostTickEvent : Event()
 object PlayerMovementTickEvent : Event()
 
 @Tag("playerNetworkMovementTick")
-class PlayerNetworkMovementTickEvent(
+class PlayerNetworkMovementTickEvent @JvmOverloads constructor(
     val state: EventState,
     var x: Double,
     var y: Double,
     var z: Double,
-    var ground: Boolean
+    var ground: Boolean,
+    var resetPositionReminder: Boolean = false,
 ) : CancellableEvent()
 
 @Tag("playerPushOut")

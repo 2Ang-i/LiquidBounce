@@ -170,6 +170,7 @@ open class ClientModule(
                 translation("liquidbounce.generic.disabled") to NotificationEvent.Severity.DISABLED
             }
             notification(title, this.name, severity)
+
         }
 
         EventManager.callEvent(ModuleToggleEvent(name, hidden, state))

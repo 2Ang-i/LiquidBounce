@@ -71,7 +71,7 @@ class MovementInputEvent(
     var directionalInput: DirectionalInput,
     var jump: Boolean,
     var sneak: Boolean,
-) : Event()
+) : CancellableEvent()
 
 @Tag("sprint")
 class SprintEvent(
