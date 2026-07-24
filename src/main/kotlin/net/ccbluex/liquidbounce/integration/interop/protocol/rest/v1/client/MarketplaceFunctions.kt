@@ -37,7 +37,6 @@ import net.ccbluex.liquidbounce.features.marketplace.MarketplaceManager
 import net.ccbluex.liquidbounce.integration.interop.forbidden
 import net.ccbluex.liquidbounce.utils.client.logger
 
-
 /**
  * Extract a required integer path parameter or respond with 403 Forbidden
  */
@@ -46,7 +45,7 @@ private suspend fun ApplicationCall.requireId(parameter: String = "id"): Int {
 }
 
 /**
- * GET /api/v1/marketplace
+ * GET /api/v1/client/marketplace
  *
  * Lists marketplace items with optional filtering
  */
@@ -74,7 +73,7 @@ private fun Route.getMarketplaceItems() = get {
 }
 
 /**
- * GET /api/v1/marketplace/{id}
+ * GET /api/v1/client/marketplace/{id}
  */
 private fun Route.getMarketplaceItem() = get {
     val id = call.requireId()
@@ -88,7 +87,7 @@ private fun Route.getMarketplaceItem() = get {
 }
 
 /**
- * GET /api/v1/marketplace/{id}/revisions
+ * GET /api/v1/client/marketplace/{id}/revisions
  */
 private fun Route.getMarketplaceItemRevisions() = get {
     val id = call.requireId()
@@ -96,22 +95,22 @@ private fun Route.getMarketplaceItemRevisions() = get {
     val limit = call.queryParameters["limit"]?.toIntOrNull() ?: 10
 
     val response = MarketplaceApi.getMarketplaceItemRevisions(id, page, limit)
-    call.respond(interopGson.toJsonTree(response))
+    call.respond(response)
 }
 
 /**
- * GET /api/v1/marketplace/{id}/revisions/{revisionId}
+ * GET /api/v1/client/marketplace/{id}/revisions/{revisionId}
  */
 private fun Route.getMarketplaceItemRevision() = get("/{revisionId}") {
     val id = call.requireId()
     val revisionId = call.requireId("revisionId")
 
     val response = MarketplaceApi.getMarketplaceItemRevision(id, revisionId)
-    call.respond(interopGson.toJsonTree(response))
+    call.respond(response)
 }
 
 /**
- * POST /api/v1/marketplace/{id}/subscribe
+ * POST /api/v1/client/marketplace/{id}/subscribe
  */
 private fun Route.subscribeMarketplaceItem() = post("/subscribe") {
     val id = call.requireId()
@@ -141,7 +140,7 @@ private fun Route.subscribeMarketplaceItem() = post("/subscribe") {
 }
 
 /**
- * POST /api/v1/marketplace/{id}/unsubscribe
+ * POST /api/v1/client/marketplace/{id}/unsubscribe
  */
 private fun Route.unsubscribeMarketplaceItem() = post("/unsubscribe") {
     val id = call.requireId()
@@ -160,7 +159,7 @@ private fun Route.unsubscribeMarketplaceItem() = post("/unsubscribe") {
 }
 
 /**
- * GET /api/v1/marketplace/{id}/reviews
+ * GET /api/v1/client/marketplace/{id}/reviews
  */
 private fun Route.getMarketplaceItemReviews() = get {
     val id = call.requireId()
@@ -168,11 +167,11 @@ private fun Route.getMarketplaceItemReviews() = get {
     val limit = call.queryParameters["limit"]?.toIntOrNull() ?: 10
 
     val response = MarketplaceApi.getReviews(id, page, limit)
-    call.respond(interopGson.toJsonTree(response))
+    call.respond(response)
 }
 
 /**
- * POST /api/v1/marketplace/{id}/reviews
+ * POST /api/v1/client/marketplace/{id}/reviews
  */
 private fun Route.postMarketplaceItemReview() = post {
     data class MarketplaceReview(
@@ -189,7 +188,7 @@ private fun Route.postMarketplaceItemReview() = post {
     }
 
     val response = MarketplaceApi.createReview(clientAccount.takeSession(), id, review.rating, review.comment)
-    call.respond(interopGson.toJsonTree(response))
+    call.respond(response)
 }
 
 internal fun Route.marketplaceRoutes() = route("/marketplace") {
