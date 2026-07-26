@@ -235,7 +235,9 @@ val nodeVersion = providers.exec {
     commandLine("node", "--version")
 }.standardOutput.asText.map(String::trim)
 val npmVersion = providers.exec {
-    commandLine("npm", "--version")
+    // On Windows, CreateProcess cannot launch bare "npm" (a .cmd shim); node-gradle uses npm.cmd as well.
+    val npmExecutable = if (System.getProperty("os.name").lowercase().contains("windows")) "npm.cmd" else "npm"
+    commandLine(npmExecutable, "--version")
 }.standardOutput.asText.map(String::trim)
 
 tasks.register<NpmTask>("npmInstallTheme") {
@@ -301,15 +303,11 @@ tasks.test {
         ).joinToString(","),
     )
     // Let Knot delegate Kotlin Test and the Kotlin runtime to JUnit's parent class loader.
-    // Resolve the classpath at execution time so dependency-report tasks can configure normally.
-    doFirst {
-        systemProperty(
-            "fabric.systemLibraries",
-            configurations.testRuntimeClasspath.get()
-                .filter { it.name.startsWith("kotlin-") }
-                .joinToString(File.pathSeparator),
-        )
-    }
+    jvmArgumentProviders.add(
+        objects.newInstance<FabricSystemLibrariesArgumentProvider>().apply {
+            runtimeClasspath.from(configurations.testRuntimeClasspath)
+        }
+    )
 }
 
 // Detekt check
