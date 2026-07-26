@@ -86,6 +86,7 @@ allprojects {
     }
 }
 
+
 loom {
     accessWidenerPath = file("src/main/resources/liquidbounce.accesswidener")
 }
@@ -230,12 +231,18 @@ tasks.processResources {
 
 // The following code will include the theme into the build
 
+// On Windows, ProcessBuilder does not resolve npm/node shell shims (npm.cmd).
+// Use the platform-specific executable names so IDEA/Gradle can start them.
+val isWindows = org.gradle.internal.os.OperatingSystem.current().isWindows
+val nodeExecutable = if (isWindows) "node.exe" else "node"
+val npmExecutable = if (isWindows) "npm.cmd" else "npm"
+
 // The plugin uses global tools when download=false, so include their actual versions in the cache key.
 val nodeVersion = providers.exec {
-    commandLine("node", "--version")
+    commandLine(nodeExecutable, "--version")
 }.standardOutput.asText.map(String::trim)
 val npmVersion = providers.exec {
-    commandLine("npm", "--version")
+    commandLine(npmExecutable, "--version")
 }.standardOutput.asText.map(String::trim)
 
 tasks.register<NpmTask>("npmInstallTheme") {
