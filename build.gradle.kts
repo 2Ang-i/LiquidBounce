@@ -138,9 +138,6 @@ dependencies {
     jij(libs.ktor.server.status.pages)
     jij(libs.ktor.serialization.gson)
 
-    // Discord RPC Support
-    jij(libs.discordIpc)
-
     // ScriptAPI
     jij(libs.polyglot)
     jij(libs.polyglot.js)
@@ -165,6 +162,7 @@ dependencies {
     // External utils
     compileOnlyApi(libs.fastutil4k.extensionsOnly)
     jij(libs.fastutil4k.moreCollections)
+    jij(libs.discord.ipc)
 
     // Test libraries
     testImplementation(kotlin("test"))
